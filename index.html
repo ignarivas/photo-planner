@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Captura Cielo - Sensores</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 24px auto; padding: 0 16px; }
+    button { width: 100%; padding: 14px; font-size: 16px; margin: 8px 0; cursor: pointer; }
+    pre { background: #f4f4f4; padding: 12px; border-radius: 8px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h2>Captura de orientación del cielo</h2>
+  <button id="btnPermisos">1. Activar sensores y GPS</button>
+  <button id="btnCapturar" disabled>2. Guardar JSON del instante</button>
+  <input id="inputFoto" type="file" accept="image/*" capture="environment" style="display:block; margin:12px 0;" />
+
+  <pre id="estado">Esperando permisos...</pre>
+
+  <script>
+    let orientacion = { alpha: null, beta: null, gamma: null, webkitCompassHeading: null };
+    let coords = { lat: null, lon: null, alt: null, accuracy: null };
+
+    const estadoEl = document.getElementById("estado");
+    const btnPermisos = document.getElementById("btnPermisos");
+    const btnCapturar = document.getElementById("btnCapturar");
+
+    function actualizarPantalla() {
+      estadoEl.textContent = JSON.stringify({
+        timestamp_utc: new Date().toISOString(),
+        orientacion,
+        coords
+      }, null, 2);
+    }
+
+    btnPermisos.addEventListener("click", async () => {
+      try {
+        if (typeof DeviceOrientationEvent !== "undefined" &&
+            typeof DeviceOrientationEvent.requestPermission === "function") {
+          const res = await DeviceOrientationEvent.requestPermission();
+          if (res !== "granted") {
+            alert("Permiso de orientación denegado.");
+            return;
+          }
+        }
+
+        window.addEventListener("deviceorientation", (e) => {
+          orientacion.alpha = e.alpha;
+          orientacion.beta = e.beta;
+          orientacion.gamma = e.gamma;
+          if (typeof e.webkitCompassHeading === "number") {
+            orientacion.webkitCompassHeading = e.webkitCompassHeading;
+          }
+          actualizarPantalla();
+        }, true);
+
+        if ("geolocation" in navigator) {
+          navigator.geolocation.watchPosition(
+            (pos) => {
+              coords = {
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                alt: pos.coords.altitude,
+                accuracy: pos.coords.accuracy
+              };
+              actualizarPantalla();
+            },
+            (err) => { console.warn("GPS:", err.message); },
+            { enableHighAccuracy: true, maximumAge: 1000 }
+          );
+        }
+
+        btnCapturar.disabled = false;
+      } catch (err) {
+        estadoEl.textContent = "Error al activar sensores: " + err.message;
+      }
+    });
+
+    btnCapturar.addEventListener("click", () => {
+      const payload = {
+        timestamp_utc: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        orientacion,
+        coords
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cielo_${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
